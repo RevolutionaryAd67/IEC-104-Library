@@ -3,6 +3,10 @@ from __future__ import annotations
 import pytest
 
 from iec104.asdu.header import ASDUHeader
+from iec104.asdu.types.c_ic_na_1 import (
+    GeneralInterrogation,
+    GeneralInterrogationASDU,
+)
 from iec104.asdu.types.c_sc_na_1 import SingleCommand, SingleCommandASDU
 from iec104.asdu.types.m_me_nc_1 import MeasuredValueASDU, MeasuredValueFloat
 from iec104.asdu.types.m_sp_na_1 import SinglePointASDU, SinglePointInformation
@@ -110,3 +114,17 @@ def test_single_command_roundtrip() -> None:
     assert obj.state is True
     assert obj.select is True
 
+
+def test_general_interrogation_roundtrip() -> None:
+    header = _header(TypeID.C_IC_NA_1, sequence=False, count=1)
+    asdu = GeneralInterrogationASDU(
+        header=header,
+        information_objects=(
+            GeneralInterrogation(ioa=0, qualifier=20),
+        ),
+    )
+    encoded = encode_asdu(asdu)
+    decoded = decode_asdu(memoryview(encoded))
+    assert isinstance(decoded, GeneralInterrogationASDU)
+    obj = decoded.information_objects[0]
+    assert obj.qualifier == 20
