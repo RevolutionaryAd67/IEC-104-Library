@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from hypothesis import given
 from hypothesis import strategies as st
 from iec104.asdu.header import ASDUHeader
+from iec104.asdu.types.c_ic_na_1 import GeneralInterrogation, GeneralInterrogationASDU
 from iec104.asdu.types.c_sc_na_1 import SingleCommand, SingleCommandASDU
 from iec104.asdu.types.m_me_nc_1 import MeasuredValueASDU, MeasuredValueFloat
 from iec104.asdu.types.m_sp_na_1 import SinglePointASDU, SinglePointInformation
@@ -139,11 +140,27 @@ def _cmd_strategy() -> st.SearchStrategy[SingleCommandASDU]:
     )
 
 
+def _gi_strategy() -> st.SearchStrategy[GeneralInterrogationASDU]:
+    info = st.builds(
+        GeneralInterrogation,
+        ioa=st.integers(min_value=0, max_value=2),
+        qualifier=st.integers(min_value=0, max_value=0xFF),
+    )
+    return st.builds(
+        lambda obj: GeneralInterrogationASDU(
+            header=_base_header(TypeID.C_IC_NA_1, False, 1),
+            information_objects=(obj,),
+        ),
+        obj=info,
+    )
+
+
 ASDU_STRATEGY = st.one_of(
     _sp_strategy(),
     _mv_strategy(),
     _spt_strategy(),
     _cmd_strategy(),
+    _gi_strategy(),
 )
 
 
