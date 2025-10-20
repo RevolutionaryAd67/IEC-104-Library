@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from ..apci.control_field import IControlField
 from ..apci.frame import build_apci
-from ..asdu.types import c_sc_na_1, m_me_nc_1, m_sp_na_1, m_sp_tb_1
+from ..asdu.types import c_ic_na_1, c_sc_na_1, m_me_nc_1, m_sp_na_1, m_sp_tb_1
 from ..asdu.types.common import ASDU, InformationObject
 from ..errors import UnsupportedTypeError
 from ..spec.constants import CONTROL_FIELD_LENGTH, MAX_APDU_LENGTH, TypeID
@@ -41,11 +41,19 @@ def _encode_single_command(asdu: ASDU[InformationObject]) -> bytes:
     return c_sc_na_1.encode(asdu)
 
 
+def _encode_general_interrogation(asdu: ASDU[InformationObject]) -> bytes:
+    if not isinstance(asdu, c_ic_na_1.GeneralInterrogationASDU):
+        # pragma: no cover - defensive
+        raise UnsupportedTypeError("expected GeneralInterrogationASDU")
+    return c_ic_na_1.encode(asdu)
+
+
 _TYPE_ENCODERS: dict[TypeID, TypeEncoder] = {
     m_sp_na_1.SinglePointASDU.TYPE_ID: _encode_single_point,
     m_sp_tb_1.SinglePointTimeASDU.TYPE_ID: _encode_single_point_time,
     m_me_nc_1.MeasuredValueASDU.TYPE_ID: _encode_measured_value,
     c_sc_na_1.SingleCommandASDU.TYPE_ID: _encode_single_command,
+    c_ic_na_1.GeneralInterrogationASDU.TYPE_ID: _encode_general_interrogation,
 }
 
 
