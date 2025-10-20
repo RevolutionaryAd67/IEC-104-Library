@@ -1,7 +1,7 @@
 **Kurzfassung für Eilige**
 - Asynchrone IEC 60870-5-104 Stack mit I/S/U-Rahmen, Sequenzierung und Timersteuerung auf Basis von ``asyncio``.
 - Öffentliche API bündelt Client, Server, Sessions, Codec-Utilities und Protokollkonstanten.
-- Unterstützte ASDUs: M_SP_NA_1, M_SP_TB_1, M_ME_NC_1, C_SC_NA_1 (erweiterbar über Registry).
+- Unterstützte ASDUs: M_SP_NA_1, M_SP_TB_1, M_ME_NC_1, C_SC_NA_1, C_IC_NA_1 (erweiterbar über Registry).
 - Sequenzfenster ``k`` standardmäßig 12; Empfangsbestätigungen aktualisieren ``peer_ack`` und stoppen ``T1``.
 - Handshake: STARTDT_ACT/CON, STOPDT_ACT/CON, TESTFR_ACT/CON mit automatischer Bestätigung.
 - Timeout-Handling über T0 (Handshake), T1 (I-Ack), T3 (Idle Keepalive); T2 vorgesehen aber derzeit ungenutzt.
@@ -94,13 +94,14 @@ assert stamp.to_datetime().year == 2024
 ```
 
 ### IEC104Client
-- **Signatur:** ``class IEC104Client`` mit ``__init__(session: IEC104Session)``, ``@classmethod async connect(cls, host: str, port: int, params: SessionParameters | None = None) -> IEC104Client``, ``async send_asdu(self, asdu: ASDUType) -> None``, ``async recv(self) -> ASDUType``, ``async close(self) -> None``, ``session``-Property. 【F:src/iec104/link/tcp.py†L16-L45】
+- **Signatur:** ``class IEC104Client`` mit ``__init__(session: IEC104Session)``, ``@classmethod async connect(cls, host: str, port: int, params: SessionParameters | None = None) -> IEC104Client``, ``async send_asdu(self, asdu: ASDUType) -> None``, ``async recv(self) -> ASDUType``, ``async close(self) -> None``, ``async general_interrogation(...) -> list[ASDUType]``, ``session``-Property. 【F:src/iec104/link/tcp.py†L24-L158】
 - **Zweck:** Komfort-Fassade für ``IEC104Session`` auf TCP-Clientseite.
 - **Parameter:** ``host``/``port`` Zieladresse, ``params`` optional ``SessionParameters``.
 - **Rückgaben:** ``connect`` liefert neuen Client.
 - **Exceptions:** weitergereichte ``SessionClosedError``, ``IEC104Error`` aus Session.
 - **Nebenwirkungen:** Netzwerkzugriff via asyncio Streams; startet Session-Handshakes.
 - **Lebenszyklus:** ``connect`` → ``send_asdu``/``recv`` → ``close``.
+- **Generalabfrage:** ``general_interrogation`` erstellt automatisch einen ``C_IC_NA_1``-Befehl (QOI=20 default), wartet auf Aktivierungsbestätigung sowie Abschluss (COT 6/7/10) und liefert alle dazwischen empfangenen ASDUs zurück; Timeout pro Phase optional. 【F:src/iec104/link/tcp.py†L46-L153】
 
 ### IEC104Server
 - **Signatur:** ``class IEC104Server`` mit ``__init__(host: str, port: int, handler: ASDUHandler, params: SessionParameters | None = None)``, ``async start(self) -> None``, ``async stop(self) -> None``. 【F:src/iec104/link/tcp.py†L47-L78】
@@ -130,7 +131,7 @@ assert stamp.to_datetime().year == 2024
 - **Exceptions:** ``LengthError`` bei Überlauf (aus Buffer), ``UnsupportedTypeError`` bei unbekanntem ASDU.
 
 ### TypeID
-- **Signatur:** ``class TypeID(IntEnum)`` mit Einträgen ``M_SP_NA_1=1``, ``M_ME_NC_1=13``, ``M_SP_TB_1=30``, ``C_SC_NA_1=45``. 【F:src/iec104/spec/constants.py†L12-L27】
+- **Signatur:** ``class TypeID(IntEnum)`` mit Einträgen ``M_SP_NA_1=1``, ``M_ME_NC_1=13``, ``M_SP_TB_1=30``, ``C_SC_NA_1=45``, ``C_IC_NA_1=100``. 【F:src/iec104/spec/constants.py†L12-L31】
 - **Zweck:** Liste der eingebauten ASDUs.
 
 ### build_i_frame
@@ -154,7 +155,8 @@ assert stamp.to_datetime().year == 2024
   - ``SinglePointWithCP56Time`` plus ``timestamp: CP56Time2a``. 【F:src/iec104/asdu/types/m_sp_tb_1.py†L1-L39】
   - ``MeasuredValueFloat`` mit ``value: float``, ``quality: int`` (0–0x1F). 【F:src/iec104/asdu/types/m_me_nc_1.py†L1-L34】
   - ``SingleCommand`` mit ``state: bool``, ``qualifier: int``, ``select: bool``. 【F:src/iec104/asdu/types/c_sc_na_1.py†L1-L33】
-- **ASDU Klassen:** ``SinglePointASDU``, ``SinglePointTimeASDU``, ``MeasuredValueASDU``, ``SingleCommandASDU``; alle erzwingen Objektanzahl und IOA-Sequenzen.
+- ``GeneralInterrogation`` mit ``qualifier: int`` (0–0xFF). 【F:src/iec104/asdu/types/c_ic_na_1.py†L10-L41】
+- **ASDU Klassen:** ``SinglePointASDU``, ``SinglePointTimeASDU``, ``MeasuredValueASDU``, ``SingleCommandASDU``, ``GeneralInterrogationASDU``; alle erzwingen Objektanzahl und IOA-Sequenzen.
 - **APCI Mapping:**
   - I-Frame: ``IControlField(send_seq, recv_seq)`` mit LSB=0 Codierung. Acknowledgement bei Empfang via ``seq_acknowledged``. 【F:src/iec104/apci/control_field.py†L22-L45】
   - S-Frame: ``SControlField(recv_seq)`` sendet reine Bestätigung. 【F:src/iec104/apci/control_field.py†L47-L57】
