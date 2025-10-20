@@ -7,7 +7,7 @@ from collections.abc import Callable
 from ..apci.control_field import FrameFormat
 from ..apci.frame import APCIFrame, expected_frame_length, parse_apci
 from ..asdu.header import ASDUHeader, parse_asdu_header
-from ..asdu.types import c_sc_na_1, m_me_nc_1, m_sp_na_1, m_sp_tb_1
+from ..asdu.types import c_ic_na_1, c_sc_na_1, m_me_nc_1, m_sp_na_1, m_sp_tb_1
 from ..asdu.types.common import ASDU, InformationObject
 from ..errors import UnsupportedTypeError
 from ..spec.constants import MAX_APDU_LENGTH, TypeID
@@ -45,11 +45,19 @@ def _decode_single_command(
     return asdu, consumed
 
 
+def _decode_general_interrogation(
+    header: ASDUHeader, payload: memoryview
+) -> ASDUDecodeResult:
+    asdu, consumed = c_ic_na_1.decode(header, payload)
+    return asdu, consumed
+
+
 _TYPE_DECODERS: dict[TypeID, TypeDecoder] = {
     m_sp_na_1.SinglePointASDU.TYPE_ID: _decode_single_point,
     m_sp_tb_1.SinglePointTimeASDU.TYPE_ID: _decode_single_point_time,
     m_me_nc_1.MeasuredValueASDU.TYPE_ID: _decode_measured_value,
     c_sc_na_1.SingleCommandASDU.TYPE_ID: _decode_single_command,
+    c_ic_na_1.GeneralInterrogationASDU.TYPE_ID: _decode_general_interrogation,
 }
 
 
