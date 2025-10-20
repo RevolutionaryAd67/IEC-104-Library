@@ -24,6 +24,7 @@ class TypeID(IntEnum):
     M_ME_NC_1 = 13
     M_SP_TB_1 = 30
     C_SC_NA_1 = 45
+    C_IC_NA_1 = 100
 
 
 class CauseOfTransmission(IntEnum):
@@ -48,5 +49,6 @@ SUPPORTED_TYPE_IDS: Final[tuple[TypeID, ...]] = (
     TypeID.M_ME_NC_1,
     TypeID.M_SP_TB_1,
     TypeID.C_SC_NA_1,
+    TypeID.C_IC_NA_1,
 )
 
