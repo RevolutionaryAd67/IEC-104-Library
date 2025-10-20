@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import asyncio
 
-from ..errors import SessionClosedError
+from ..asdu.header import ASDUHeader
+from ..asdu.types.c_ic_na_1 import (
+    GeneralInterrogation,
+    GeneralInterrogationASDU,
+)
+from ..errors import IEC104Error, SessionClosedError, TimeoutError as IECTimeoutError
 from ..logging import get_logger
+from ..spec.constants import CauseOfTransmission, TypeID
 from ..typing import ASDUHandler, ASDUType
 from .session import (
     IEC104Session,
@@ -36,6 +42,115 @@ class IEC104Client:
 
     async def close(self) -> None:
         await self._session.close()
+
+    async def general_interrogation(
+        self,
+        *,
+        common_address: int,
+        qualifier: int = 20,
+        originator_address: int = 0,
+        oa: int | None = None,
+        timeout: float | None = None,
+    ) -> list[ASDUType]:
+        """Execute a complete general interrogation sequence.
+
+        Args:
+            common_address: Target common ASDU address.
+            qualifier: Qualifier of interrogation (default 20 = general).
+            originator_address: Originator address for the command.
+            oa: Optional originator byte if ``SessionParameters.with_oa`` is set.
+            timeout: Optional timeout in seconds per receive step.
+
+        Returns:
+            List of ASDUs received as interrogation data.
+
+        Raises:
+            IEC104Error: If the remote station responds with unexpected data.
+            IECTimeoutError: If waiting for responses times out.
+        """
+
+        header = ASDUHeader(
+            type_id=TypeID.C_IC_NA_1,
+            sequence=False,
+            vsq_number=1,
+            cause=CauseOfTransmission.ACTIVATION,
+            negative_confirm=False,
+            test=False,
+            originator_address=originator_address,
+            common_address=common_address,
+            oa=oa,
+        )
+        command = GeneralInterrogationASDU(
+            header=header,
+            information_objects=(
+                GeneralInterrogation(ioa=0, qualifier=qualifier),
+            ),
+        )
+        await self.send_asdu(command)
+        await self._await_interrogation_response(
+            expected_cause=CauseOfTransmission.ACTIVATION_CONFIRMATION,
+            qualifier=qualifier,
+            timeout=timeout,
+            phase="general interrogation activation confirmation",
+        )
+        responses: list[ASDUType] = []
+        while True:
+            asdu = await self._recv_with_timeout(
+                timeout, phase="general interrogation data"
+            )
+            if isinstance(asdu, GeneralInterrogationASDU):
+                if asdu.header.cause != CauseOfTransmission.COMMAND_TERMINATION:
+                    raise IEC104Error(
+                        "unexpected general interrogation ASDU with cause "
+                        f"{asdu.header.cause.name}"
+                    )
+                self._validate_interrogation_asdu(asdu, qualifier)
+                break
+            responses.append(asdu)
+        return responses
+
+    async def _recv_with_timeout(
+        self, timeout: float | None, *, phase: str
+    ) -> ASDUType:
+        try:
+            if timeout is None:
+                return await self._session.recv()
+            return await asyncio.wait_for(self._session.recv(), timeout)
+        except asyncio.TimeoutError as exc:  # pragma: no cover - defensive
+            raise IECTimeoutError(f"timeout while waiting for {phase}") from exc
+
+    async def _await_interrogation_response(
+        self,
+        *,
+        expected_cause: CauseOfTransmission,
+        qualifier: int,
+        timeout: float | None,
+        phase: str,
+    ) -> GeneralInterrogationASDU:
+        asdu = await self._recv_with_timeout(timeout, phase=phase)
+        if not isinstance(asdu, GeneralInterrogationASDU):
+            raise IEC104Error(
+                "unexpected ASDU while waiting for general interrogation response"
+            )
+        if asdu.header.cause != expected_cause:
+            raise IEC104Error(
+                "unexpected cause of transmission "
+                f"{asdu.header.cause.name} during general interrogation"
+            )
+        self._validate_interrogation_asdu(asdu, qualifier)
+        return asdu
+
+    @staticmethod
+    def _validate_interrogation_asdu(
+        asdu: GeneralInterrogationASDU, qualifier: int
+    ) -> None:
+        if asdu.header.negative_confirm:
+            raise IEC104Error("general interrogation rejected by remote station")
+        if not asdu.information_objects:
+            raise IEC104Error("general interrogation response missing information")
+        obj = asdu.information_objects[0]
+        if obj.qualifier != qualifier:
+            raise IEC104Error("general interrogation qualifier mismatch")
 
     @property
     def session(self) -> IEC104Session:
